@@ -1,7 +1,6 @@
 import Student from "../models/student.model.js";
 
-export const getAllStudents = async (page = 1) => {
-  const limit = 20;
+export const getAllStudents = async (page = 1, limit = 20) => {
   const skip = (page - 1) * limit;
   // Get all non-deleted students with pagination
   const students = await Student.find({ isDeleted: false })

@@ -3,7 +3,8 @@ import { getAllStudents, createStudent, patchStudentByName, deleteStudentByName 
 export const getStudents = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const students = await getAllStudents(page);
+    const limit = parseInt(req.query.limit) || 20;
+    const students = await getAllStudents(page, limit);
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ error: error.message });
