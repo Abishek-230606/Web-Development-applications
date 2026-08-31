@@ -4,6 +4,6 @@ import studentRoutes from "./routes/student.routes.js";
 const app = express();
 
 app.use(express.json());
-app.use("/api/students", studentRoutes);
+app.use("/", studentRoutes);
 
 export default app;

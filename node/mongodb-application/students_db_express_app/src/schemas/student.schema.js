@@ -18,6 +18,20 @@ const studentSchema = new mongoose.Schema({
   collegeMail: {
     type: String,
     required: true
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  }
+}, {
+  timestamps: true,
+  versionKey: false,
+  toJSON: {
+    transform: function (doc, ret) {
+      delete ret.__v;
+      delete ret.isDeleted;
+      return ret;
+    }
   }
 });
 
