@@ -13,9 +13,16 @@ export const getAllStudents = async (page = 1, limit = 20, filters = {}) => {
 };
 
 export const createStudent = async (studentData) => {
-  //  create a new student
-  const newStudent = await Student.create(studentData);
-  return newStudent;
+  // Create single or multiple students
+  if (Array.isArray(studentData)) {
+    // Bulk insert multiple students
+    const newStudents = await Student.insertMany(studentData);
+    return newStudents;
+  } else {
+    // Create single student
+    const newStudent = await Student.create(studentData);
+    return newStudent;
+  }
 };
 
 export const getStudentById = async (id) => {

@@ -17,7 +17,7 @@ const studentSchema = new mongoose.Schema({
   cgpa: {
     type: Number
   },
-  dob: {
+   dateOfBirth: {
     type: Date
   },
   dateOfJoin: {
