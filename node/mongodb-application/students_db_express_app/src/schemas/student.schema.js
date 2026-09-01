@@ -5,15 +5,23 @@ const studentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  department: {
+  dept: {
+    type: String,
+    required: true,
+    enum: ['CSE', 'EEE', 'ECE', 'MECH']
+  },
+  password: {
     type: String,
     required: true
   },
   cgpa: {
     type: Number
   },
-  age: {
-    type: Number
+  dob: {
+    type: Date
+  },
+  dateOfJoin: {
+    type: Date
   },
   collegeMail: {
     type: String,
