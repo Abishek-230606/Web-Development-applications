@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.get("/", getStudents);
 router.post("/", addStudent);
-router.patch("/:name", updateStudent);
-router.delete("/:name", removeStudent);
+router.patch("/:id", updateStudent);
+router.delete("/:id", removeStudent);
 
 export default router;

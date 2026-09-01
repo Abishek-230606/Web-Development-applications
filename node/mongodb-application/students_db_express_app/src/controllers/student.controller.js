@@ -1,10 +1,23 @@
-import { getAllStudents, createStudent, patchStudentByName, deleteStudentByName } from "../services/student.service.js";
+import { getAllStudents, createStudent, patchStudentById, deleteStudentById } from "../services/student.service.js";
 
 export const getStudents = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
-    const students = await getAllStudents(page, limit);
+    
+    // Extract filters
+    const filters = {};
+    if (req.query.dept) {
+      filters.dept = req.query.dept; // exact match
+    }
+    if (req.query.name) {
+      filters.name = { $regex: req.query.name, $options: "i" }; // case-insensitive partial match
+    }
+    if (req.query.minCgpa) {
+      filters.cgpa = { $gte: parseFloat(req.query.minCgpa) }; // greater than or equal
+    }
+
+    const students = await getAllStudents(page, limit, filters);
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -22,8 +35,8 @@ export const addStudent = async (req, res) => {
 
 export const updateStudent = async (req, res) => {
   try {
-    const { name } = req.params;
-    const updatedStudent = await patchStudentByName(name, req.body);
+    const { id } = req.params;
+    const updatedStudent = await patchStudentById(id, req.body);
     if (!updatedStudent) {
       return res.status(404).json({ message: "Student not found or deleted" });
     }
@@ -35,8 +48,8 @@ export const updateStudent = async (req, res) => {
 
 export const removeStudent = async (req, res) => {
   try {
-    const { name } = req.params;
-    const deletedStudent = await deleteStudentByName(name);
+    const { id } = req.params;
+    const deletedStudent = await deleteStudentById(id);
     if (!deletedStudent) {
       return res.status(404).json({ message: "Student not found or already deleted" });
     }
