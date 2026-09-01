@@ -26,6 +26,26 @@ export const getStudents = async (req, res) => {
 
 export const addStudent = async (req, res) => {
   try {
+    // Define allowed fields for student creation
+    const allowedFields = ['name', 'dept', 'password', 'cgpa', 'dob', 'dateOfJoin', 'collegeMail', 'isDeleted'];
+    
+    // Check for unknown fields in request body
+    const receivedFields = Object.keys(req.body);
+    const unknownFields = receivedFields.filter(field => !allowedFields.includes(field));
+    
+    if (unknownFields.length > 0) {
+      return res.status(400).json({
+        error: `Bad Request: Invalid field(s) '${unknownFields.join(', ')}' not allowed. Allowed fields are: ${allowedFields.join(', ')}`
+      });
+    }
+    
+    // Check if body is empty
+    if (receivedFields.length === 0) {
+      return res.status(400).json({
+        error: 'Bad Request: Request body cannot be empty. Required fields: name, dept, password, collegeMail'
+      });
+    }
+    
     const newStudent = await createStudent(req.body);
     res.status(201).json(newStudent);
   } catch (error) {
@@ -35,6 +55,26 @@ export const addStudent = async (req, res) => {
 
 export const updateStudent = async (req, res) => {
   try {
+    // Define allowed fields for student update
+    const allowedFields = ['name', 'dept', 'password', 'cgpa', 'dob', 'dateOfJoin', 'collegeMail', 'isDeleted'];
+    
+    // Check for unknown fields in request body
+    const receivedFields = Object.keys(req.body);
+    const unknownFields = receivedFields.filter(field => !allowedFields.includes(field));
+    
+    if (unknownFields.length > 0) {
+      return res.status(400).json({
+        error: `Bad Request: Invalid field(s) '${unknownFields.join(', ')}' not allowed. Allowed fields are: ${allowedFields.join(', ')}`
+      });
+    }
+    
+    // Check if body is empty
+    if (receivedFields.length === 0) {
+      return res.status(400).json({
+        error: 'Bad Request: Request body cannot be empty'
+      });
+    }
+    
     const { id } = req.params;
     const updatedStudent = await patchStudentById(id, req.body);
     if (!updatedStudent) {
