@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const studentSchema = new mongoose.Schema({
+const studentSchema = new mongoose.Schema({ 
   name: {
     type: String,
     required: true
@@ -25,7 +25,8 @@ const studentSchema = new mongoose.Schema({
   },
   collegeMail: {
     type: String,
-    required: true
+    required: true,
+    unique: true,
   },
   isDeleted: {
     type: Boolean,

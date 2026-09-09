@@ -1,4 +1,17 @@
+import { z } from "zod";
 import { getAllStudents, createStudent, patchStudentById, deleteStudentById } from "../services/student.service.js";
+
+// Zod Schema for validation
+const studentZodSchema = z.object({
+  name: z.string({ required_error: "Name is required" }),
+  collegeMail: z.string().email("Invalid email format"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  dateOfBirth: z.string().refine((dob) => {
+    const birthYear = new Date(dob).getFullYear();
+    const currentYear = new Date().getFullYear();
+    return (currentYear - birthYear) >= 18;
+  }, "Age must be greater than or equal to 18")
+});
 
 export const getStudents = async (req, res) => {
   try {
@@ -22,7 +35,25 @@ export const getStudents = async (req, res) => {
       filters.cgpa = { $gte: parseFloat(req.query.minCgpa) };
     }
 
-    const students = await getAllStudents(page, limit, filters);
+    const sortField = req.query.sort;
+    const sortFields = {
+      cgpa: "cgpa",
+      dateOfBirth: "dateOfBirth",
+      dateOfJoin: "dateOfJoin"
+    };
+
+    if (sortField && !sortFields[sortField]) {
+      return res.status(400).json({ error: "sortBy must be cgpa, dateOfBirth, or dateOfJoin" });
+    }
+
+    const sortDirection = (req.query.order || "asc").toLowerCase();
+    if (!["asc", "dsc"].includes(sortDirection)) {
+      return res.status(400).json({ error: "order must be asc or dsc" });
+    }
+
+    const sortValue = sortDirection === "asc" ? 1 : -1;
+    const sort = sortField ? { [sortFields[sortField]]: sortValue } : {};
+    const students = await getAllStudents(page, limit, filters, sort);
     
     // Format dates to YYYY-MM-DD
     const formattedStudents = students.map(student => {
@@ -33,8 +64,14 @@ export const getStudents = async (req, res) => {
         dateOfJoin: student.dateOfJoin ? student.dateOfJoin.toISOString().split('T')[0] : null
       };
     });
-    
-    res.status(200).json(formattedStudents);
+
+    const pageData = {
+      page,
+      studentCount: formattedStudents.length,
+      students: formattedStudents
+    };
+
+    res.status(200).json(pageData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -42,66 +79,28 @@ export const getStudents = async (req, res) => {
 
 export const addStudent = async (req, res) => {
   try {
-    // Note: isDeleted is NOT in allowedFields - it's auto-managed by system (defaults to false)
-    const allowedFields = ['name', 'dept', 'password', 'cgpa', 'dateOfBirth', 'dateOfJoin', 'collegeMail'];
-    
-    // Check if body is array or single object
-    const isArray = Array.isArray(req.body);
-    const studentsData = isArray ? req.body : [req.body];
-    
-    // Validate each student
+    const studentsData = Array.isArray(req.body) ? req.body : [req.body];
+
+    // Validate each student using Zod
     for (let student of studentsData) {
-      const receivedFields = Object.keys(student);
-      const unknownFields = receivedFields.filter(field => !allowedFields.includes(field));
-      
-      if (unknownFields.length > 0) {
-        return res.status(400).json({
-          error: `Bad Request: Invalid field(s) '${unknownFields.join(', ')}' not allowed. Allowed fields are: ${allowedFields.join(', ')}`
-        });
-      }
-      
-      if (receivedFields.length === 0) {
-        return res.status(400).json({
-          error: 'Bad Request: Request body cannot be empty. Required fields: name, dept, password, collegeMail'
-        });
-      }
+      studentZodSchema.parse(student);
     }
-    
-    // Create single or multiple students
-    if (isArray) {
-      const newStudents = await createStudent(studentsData);
-      res.status(201).json({ message: `${newStudents.length} students created successfully`, students: newStudents });
-    } else {
-      const newStudent = await createStudent(req.body);
-      res.status(201).json(newStudent);
-    }
+
+    const newStudents = await createStudent(studentsData);
+    res.status(201).json({ message: `${newStudents.length} students created successfully`, students: newStudents });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
     res.status(400).json({ error: error.message });
   }
 };
 
 export const updateStudent = async (req, res) => {
   try {
-    // Define allowed fields for student update
-    const allowedFields = ['name', 'dept', 'password', 'cgpa', 'dateOfBirth', 'dateOfJoin', 'collegeMail', 'isDeleted'];
-    
-    // Check for unknown fields in request body
-    const receivedFields = Object.keys(req.body);
-    const unknownFields = receivedFields.filter(field => !allowedFields.includes(field));
-    
-    if (unknownFields.length > 0) {
-      return res.status(400).json({
-        error: `Bad Request: Invalid field(s) '${unknownFields.join(', ')}' not allowed. Allowed fields are: ${allowedFields.join(', ')}`
-      });
-    }
-    
-    // Check if body is empty
-    if (receivedFields.length === 0) {
-      return res.status(400).json({
-        error: 'Bad Request: Request body cannot be empty'
-      });
-    }
-    
+    // Validate update data using partial schema
+    studentZodSchema.partial().parse(req.body);
+
     const { id } = req.params;
     const updatedStudent = await patchStudentById(id, req.body);
     if (!updatedStudent) {
@@ -109,6 +108,9 @@ export const updateStudent = async (req, res) => {
     }
     res.status(200).json(updatedStudent);
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
     res.status(400).json({ error: error.message });
   }
 };
