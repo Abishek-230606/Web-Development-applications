@@ -4,6 +4,7 @@ import { getAllStudents, createStudent, patchStudentById, deleteStudentById } fr
 // Zod Schema for validation
 const studentZodSchema = z.object({
   name: z.string({ required_error: "Name is required" }),
+  dept: z.enum(["CSE", "EEE", "ECE", "MECH"]),
   collegeMail: z.string().email("Invalid email format"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   dateOfBirth: z.string().refine((dob) => {
@@ -90,7 +91,12 @@ export const addStudent = async (req, res) => {
     res.status(201).json({ message: `${newStudents.length} students created successfully`, students: newStudents });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors });
+      return res.status(400).json({ error: error.issues });
+    }
+    if (error.code === 11000) {
+      return res.status(409).json({
+        error: `A student with this collegeMail already exists: ${error.keyValue.collegeMail}`
+      });
     }
     res.status(400).json({ error: error.message });
   }
@@ -109,7 +115,7 @@ export const updateStudent = async (req, res) => {
     res.status(200).json(updatedStudent);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors });
+      return res.status(400).json({ error: error.issues });
     }
     res.status(400).json({ error: error.message });
   }
