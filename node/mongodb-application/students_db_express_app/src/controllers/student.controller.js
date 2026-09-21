@@ -7,6 +7,7 @@ const studentZodSchema = z.object({
   dept: z.enum(["CSE", "EEE", "ECE", "MECH"]),
   collegeMail: z.string().email("Invalid email format"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["admin", "teacher", "student"]).optional(),
   dateOfBirth: z.string().refine((dob) => {
     const birthYear = new Date(dob).getFullYear();
     const currentYear = new Date().getFullYear();
@@ -26,7 +27,20 @@ export const getStudents = async (req, res) => {
     
     // Extract filters
     const filters = {};
-    if (req.query.dept) {
+
+    // Role-Based Access Scoping:
+    // 1. Student: can only view their own record
+    // 2. Admin: can view all (or filter by req.query.dept)
+    // 3. Teacher: can ONLY view students in their respective department
+    if (req.user) {
+      if (req.user.role === "student") {
+        filters._id = req.user.id;
+      } else if (req.user.role === "teacher") {
+        filters.dept = req.user.dept;
+      } else if (req.user.role === "admin" && req.query.dept) {
+        filters.dept = req.query.dept;
+      }
+    } else if (req.query.dept) {
       filters.dept = req.query.dept;
     }
     if (req.query.name) {
