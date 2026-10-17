@@ -1,5 +1,41 @@
 import { z } from "zod";
-import { getAllStudents, createStudent, patchStudentById, deleteStudentById } from "../services/student.service.js";
+import { getAllStudents, getStudentById, createStudent, patchStudentById, deleteStudentById } from "../services/student.service.js";
+import redisClient from "../config/redis.js";
+
+const STUDENTS_CACHE_TTL = 60;
+
+const buildStudentsCacheKey = (req, page, limit, filters, sort) => {
+  const user = req.user || {};
+  const query = {
+    userId: user.id || "public",
+    role: user.role || "public",
+    dept: filters.dept || "all",
+    name: filters.name?.$regex || "",
+    minCgpa: filters.cgpa?.$gte ?? "",
+    page,
+    limit,
+    sort
+  };
+
+  return `students:${Buffer.from(JSON.stringify(query)).toString("base64url")}`;
+};
+
+const invalidateStudentsCache = async () => {
+  if (!redisClient.isReady) return;
+
+  try {
+    const keys = [];
+    for await (const key of redisClient.scanIterator({ MATCH: "students:*", COUNT: 100 })) {
+      keys.push(key);
+    }
+
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
+  } catch (error) {
+    console.warn("Could not invalidate Redis cache:", error.message);
+  }
+};
 
 // Zod Schema for validation
 const studentZodSchema = z.object({
@@ -40,7 +76,7 @@ export const getStudents = async (req, res) => {
       } else if (req.user.role === "admin" && req.query.dept) {
         filters.dept = req.query.dept;
       }
-    } else if (req.query.dept) {
+    } else if (req.query.dept) { // 
       filters.dept = req.query.dept;
     }
     if (req.query.name) {
@@ -68,6 +104,19 @@ export const getStudents = async (req, res) => {
 
     const sortValue = sortDirection === "asc" ? 1 : -1;
     const sort = sortField ? { [sortFields[sortField]]: sortValue } : {};
+
+    const cacheKey = buildStudentsCacheKey(req, page, limit, filters, sort);
+    if (redisClient.isReady) {
+      try {
+        const cachedData = await redisClient.get(cacheKey);
+        if (cachedData) {
+          return res.status(200).json({ ...JSON.parse(cachedData), cached: true });
+        }
+      } catch (error) {
+        console.warn("Could not read Redis cache:", error.message);
+      }
+    }
+
     const students = await getAllStudents(page, limit, filters, sort);
     
     // Format dates to YYYY-MM-DD
@@ -86,10 +135,30 @@ export const getStudents = async (req, res) => {
       students: formattedStudents
     };
 
+    if (redisClient.isReady) {
+      try {
+        await redisClient.setEx(cacheKey, STUDENTS_CACHE_TTL, JSON.stringify(pageData));
+      } catch (error) {
+        console.warn("Could not write Redis cache:", error.message);
+      }
+    }
+
     res.status(200).json(pageData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+};
+
+export const getAdminStudents = async (req, res) => {
+  return getStudents(req, res);
+};
+
+export const getTeacherStudents = async (req, res) => {
+  return getStudents(req, res);
+};
+
+export const getStudentSelf = async (req, res) => {
+  return getStudents(req, res);
 };
 
 export const addStudent = async (req, res) => {
@@ -101,7 +170,19 @@ export const addStudent = async (req, res) => {
       studentZodSchema.parse(student);
     }
 
+    // Teacher department restriction check
+    if (req.user && req.user.role === "teacher") {
+      for (let student of studentsData) {
+        if (student.dept !== req.user.dept) {
+          return res.status(403).json({
+            error: `Teachers can only add students to their own department (${req.user.dept})`
+          });
+        }
+      }
+    }
+
     const newStudents = await createStudent(studentsData);
+    await invalidateStudentsCache();
     res.status(201).json({ message: `${newStudents.length} students created successfully`, students: newStudents });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -122,10 +203,29 @@ export const updateStudent = async (req, res) => {
     studentZodSchema.partial().parse(req.body);
 
     const { id } = req.params;
-    const updatedStudent = await patchStudentById(id, req.body);
-    if (!updatedStudent) {
+
+    // Check if target student exists
+    const existingStudent = await getStudentById(id);
+    if (!existingStudent) {
       return res.status(404).json({ message: "Student not found or deleted" });
     }
+
+    // Teacher department restriction check
+    if (req.user && req.user.role === "teacher") {
+      if (existingStudent.dept !== req.user.dept) {
+        return res.status(403).json({
+          error: `Teachers can only update students in their own department (${req.user.dept})`
+        });
+      }
+      if (req.body.dept && req.body.dept !== req.user.dept) {
+        return res.status(403).json({
+          error: `Teachers cannot assign students to a different department than (${req.user.dept})`
+        });
+      }
+    }
+
+    const updatedStudent = await patchStudentById(id, req.body);
+    await invalidateStudentsCache();
     res.status(200).json(updatedStudent);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -138,10 +238,24 @@ export const updateStudent = async (req, res) => {
 export const removeStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedStudent = await deleteStudentById(id);
-    if (!deletedStudent) {
+
+    // Check if target student exists
+    const existingStudent = await getStudentById(id);
+    if (!existingStudent) {
       return res.status(404).json({ message: "Student not found or already deleted" });
     }
+
+    // Teacher department restriction check
+    if (req.user && req.user.role === "teacher") {
+      if (existingStudent.dept !== req.user.dept) {
+        return res.status(403).json({
+          error: `Teachers can only delete students in their own department (${req.user.dept})`
+        });
+      }
+    }
+
+    const deletedStudent = await deleteStudentById(id);
+    await invalidateStudentsCache();
     res.status(200).json({ message: "Student deleted successfully", student: deletedStudent });
   } catch (error) {
     res.status(500).json({ error: error.message });

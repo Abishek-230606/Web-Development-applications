@@ -26,8 +26,8 @@ export const createStudent = async (studentData) => {
 };
 
 export const getStudentById = async (id) => {
-  //  find one student by their ID
-  const student = await Student.findById(id);
+  // find one student by their ID excluding deleted students
+  const student = await Student.findOne({ _id: id, isDeleted: false });
   return student;
 };
 
